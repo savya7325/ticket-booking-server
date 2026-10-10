@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { dateKey } from "../utils/dateKey.js";
 
 const eventSchema = new mongoose.Schema({
   title: { type: String, required: true },
@@ -22,8 +23,8 @@ eventSchema.pre("save", function(next) {
   }
 
   this.dates.forEach(date => {
-    const iso = new Date(date).toISOString();
-    
+    // const iso = new Date(date).toISOString();
+       const iso = dateKey(date);
     if (!(iso in this.seatsPerDate)) {
       this.seatsPerDate[iso] = this.ticketsAvailable || 0;
     }

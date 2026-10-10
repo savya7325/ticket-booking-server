@@ -53,8 +53,9 @@
 //   res.json({ message: "Logged out successfully" });
 // };
 
-
-import User from "../models/users.js";
+import path from "path";
+import fs from "fs";
+import User from "../models/users.js";  
 import jwt from "jsonwebtoken";
 import { sendWelcomeEmail } from "../services/emailService.js"; // ← ADD THIS IMPORT
 
@@ -114,4 +115,162 @@ export const loginUser = async (req, res) => {
 
 export const logoutUser = (req, res) => {
   res.json({ message: "Logged out successfully" });
+};
+
+
+// export const uploadAvatar = async (req, res) => {
+//   try {
+//     if (!req.file) {
+//       return res.status(400).json({ message: "No image uploaded" });
+//     }
+
+//     const user = await User.findById(req.user._id);
+//     if (!user) {
+//       return res.status(404).json({ message: "User not found" });
+//     }
+
+//     //  DELETE OLD AVATAR ONLY IF IT IS NOT DEFAULT
+//     // if (
+//     //   user.avatar &&
+//     //   user.avatar !== "default-avatar.png"
+//     // ) {
+//     //   const oldPath = path.join(
+//     //     process.cwd(),
+//     //     "uploads",
+//     //     "avatars",
+//     //     user.avatar
+//     //   );
+
+//     //   if (fs.existsSync(oldPath)) {
+//     //     fs.unlinkSync(oldPath);
+//     //   }
+//     // }
+
+//       if (
+//       user.avatar &&
+//       user.avatar !== "default-avatar.png" &&
+//       user.avatar !== req.file.filename
+//     ) {
+//       const oldPath = path.join(
+//         process.cwd(),
+//         "uploads",
+//         "avatars",
+//         user.avatar
+//       );
+
+//       if (fs.existsSync(oldPath)) {
+//         fs.unlinkSync(oldPath);
+//       }
+//     }
+
+//     //  SAVE NEW AVATAR
+// //     user.avatar = req.file.filename;
+// //     await user.save();
+
+// //     res.status(200).json({
+// //       message: "Profile picture updated successfully",
+// //       // avatarUrl: `/uploads/avatars/${user.avatar}`,
+// //       avatarUrl: `${process.env.BASE_URL}/uploads/avatars/${user.avatar}`,
+// //       user: {
+// //         _id: user._id,
+// //         username: user.username,
+// //         email: user.email,
+// //         role: user.role,
+// //       },
+// //     });
+// //   } catch (error) {
+// //     console.error("UPLOAD AVATAR ERROR:", error);
+// //     res.status(500).json({ message: error.message });
+// //   }
+// // };
+
+
+// user.avatar = req.file.filename;
+//     await user.save();
+
+//     res.status(200).json({
+//       message: "Profile picture updated successfully",
+//       avatarUrl: `${process.env.BASE_URL}/uploads/avatars/${user.avatar}`,
+//     });
+//   } catch (error) {
+//     console.error("UPLOAD AVATAR ERROR:", error);
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
+
+export const uploadAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No image uploaded" });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // ✅ DELETE ONLY IF DIFFERENT FILE & NOT DEFAULT
+    // if (
+    //   user.avatar &&
+    //   user.avatar !== "default-avatar.png" &&
+    //   user.avatar !== req.file.filename
+    // ) {
+    if (user.avatar && user.avatar !== "default-avatar.png") {
+      const oldPath = path.join(
+        process.cwd(),
+        "uploads",
+        "avatars",
+        user.avatar
+      );
+
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    // save new avatar
+    user.avatar = req.file.filename;
+    await user.save();
+
+    res.status(200).json({
+      message: "Profile picture updated successfully",
+      avatarUrl: `${process.env.BASE_URL}/uploads/avatars/${user.avatar}`,
+    });
+  } catch (error) {
+    console.error("UPLOAD AVATAR ERROR:", error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+export const updateProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // update username
+    if (req.body.username) {
+      user.username = req.body.username;
+    }
+
+    await user.save();
+
+    res.json({
+      user: {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        avatarUrl: user.avatar
+          ? `/uploads/avatars/${user.avatar}`
+          : null,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 };

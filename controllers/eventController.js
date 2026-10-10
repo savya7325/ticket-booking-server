@@ -838,7 +838,6 @@ export const bookTickets = async (req, res) => {
     event.bookedSeats[dateStr].push(...seats);
     event.seatsPerDate[dateStr] = Math.max(event.seatsPerDate[dateStr] - seats.length, 0);
 
-    // ✅ Update overall ticketsAvailable
     event.ticketsAvailable = Math.max((event.ticketsAvailable || 50) - seats.length, 0);
 
     event.markModified("seatsPerDate");
