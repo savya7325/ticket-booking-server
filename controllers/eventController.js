@@ -536,6 +536,8 @@ import Event from "../models/events.js";
 import Booking from "../models/booking.js";
 import User from "../models/users.js"; // ← ADD THIS IMPORT
 import { sendBookingConfirmation } from "../services/emailService.js"; // ← ADD THIS IMPORT
+import { dateKey } from "../utils/dateKey.js";
+import { MAX_CAPACITY, bookedOn, capacityOf, seatLabels } from "../utils/seatLayout.js";
 
 const parseDates = (input) => {
   if (!input) return [];
@@ -543,70 +545,51 @@ const parseDates = (input) => {
   return input.split(",").map(d => new Date(d));
 };
 
-// Helper function to initialize event seats data
-const initializeEventSeats = (event, ticketsAvailable) => {
-  if (!event.seatsPerDate || typeof event.seatsPerDate !== "object") {
-    event.seatsPerDate = {};
-  }
-  if (!event.bookedSeats || typeof event.bookedSeats !== "object") {
-    event.bookedSeats = {};
-  }
-  
-  if (event.dates && Array.isArray(event.dates)) {
-    event.dates.forEach(date => {
-      const iso = new Date(date).toISOString();
-      if (event.seatsPerDate[iso] === undefined) {
-        event.seatsPerDate[iso] = ticketsAvailable;
-      }
-      if (!event.bookedSeats[iso]) {
-        event.bookedSeats[iso] = [];
-      }
-    });
-  }
-  
-  return event;
+// Seats per show from the request: `capacity`, or `ticketsAvailable` from older clients.
+const capacityFromBody = (body) => {
+  const raw = body.capacity ?? body.ticketsAvailable;
+  return raw === undefined || raw === "" ? undefined : Number(raw);
+};
+
+const toResponse = (event) => {
+  const obj = event.toObject ? event.toObject() : event;
+  const capacity = capacityOf(obj);
+  return {
+    ...obj,
+    dates: (obj.dates || []).map(d => new Date(d).toISOString()),
+    capacity,
+    ticketsAvailable: capacity,
+    seatsPerDate: obj.seatsPerDate || {},
+    bookedSeats: obj.bookedSeats || {},
+  };
 };
 
 export const createEvent = async (req, res) => {
   try {
-    const { title, description, location, price, ticketsAvailable } = req.body;
-    
+    const { title, description, location, price } = req.body;
+
     let dates = req.body.dates || req.body['dates[]'];
-    
     if (!Array.isArray(dates)) {
       dates = dates ? [dates] : [];
     }
-    
-    const parsedDates = parseDates(dates);
-    const availableSeats = Number(ticketsAvailable) || 50;
 
-    const seatsPerDate = {};
-    const bookedSeats = {};
+    const capacity = capacityFromBody(req.body) || 50;
+    if (capacity > MAX_CAPACITY) {
+      return res.status(400).json({ message: `A show can have at most ${MAX_CAPACITY} seats.` });
+    }
 
-    parsedDates.forEach(d => {
-      const iso = new Date(d).toISOString();
-      seatsPerDate[iso] = availableSeats;
-      bookedSeats[iso] = [];
-    });
-
+    // seatsPerDate / bookedSeats are filled in by the model's pre-save hook.
     const event = await Event.create({
       title,
       description,
-      dates: parsedDates,
+      dates: parseDates(dates),
       location,
       price: Number(price) || 0,
-      ticketsAvailable: availableSeats,
+      capacity,
       image: req.file ? req.file.filename : null,
-      seatsPerDate,
-      bookedSeats
     });
 
-    res.status(201).json({
-      ...event.toObject(),
-      dates: event.dates.map(d => new Date(d).toISOString()),
-      seatsPerDate: event.seatsPerDate || {},
-      bookedSeats: event.bookedSeats || {}
-    });
+    res.status(201).json(toResponse(event));
   } catch (err) {
     console.error("Create event error:", err);
     res.status(400).json({ message: err.message });
@@ -629,16 +612,7 @@ export const getEvents = async (req, res) => {
     }
 
     const events = await Event.find(filter);
-
-    const eventsData = events.map(ev => ({
-      ...ev.toObject(),
-      dates: ev.dates.map(d => d.toISOString()),
-      seatsPerDate: ev.seatsPerDate || {},
-      bookedSeats: ev.bookedSeats || {},
-      ticketsAvailable: ev.ticketsAvailable || 50
-    }));
-
-    res.json(eventsData);
+    res.json(events.map(toResponse));
   } catch (err) {
     console.error("Get events error:", err);
     res.status(500).json({ message: err.message });
@@ -647,27 +621,9 @@ export const getEvents = async (req, res) => {
 
 export const getEventById = async (req, res) => {
   try {
-    const { id } = req.params;
-    const event = await Event.findById(id);
+    const event = await Event.findById(req.params.id);
     if (!event) return res.status(404).json({ message: "Event not found" });
-
-    // Initialize seats if missing (for old events)
-    const ticketsAvailable = event.ticketsAvailable || 50;
-    
-    if (!event.seatsPerDate || Object.keys(event.seatsPerDate).length === 0) {
-      initializeEventSeats(event, ticketsAvailable);
-      event.markModified('seatsPerDate');
-      event.markModified('bookedSeats');
-      await event.save();
-    }
-
-    res.json({
-      ...event.toObject(),
-      dates: event.dates.map(d => d.toISOString()),
-      seatsPerDate: event.seatsPerDate || {},
-      bookedSeats: event.bookedSeats || {},
-      ticketsAvailable: ticketsAvailable
-    });
+    res.json(toResponse(event));
   } catch (err) {
     console.error("Get event by ID error:", err);
     res.status(500).json({ message: err.message });
@@ -677,8 +633,8 @@ export const getEventById = async (req, res) => {
 export const updateEvent = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, location, price, ticketsAvailable } = req.body;
-    
+    const { title, description, location, price } = req.body;
+
     let dates = req.body.dates || req.body['dates[]'];
     if (!Array.isArray(dates)) {
       dates = dates ? [dates] : [];
@@ -688,55 +644,35 @@ export const updateEvent = async (req, res) => {
     if (!event) return res.status(404).json({ message: "Event not found" });
 
     const newDates = parseDates(dates);
-    const newSeats = Number(ticketsAvailable) || event.ticketsAvailable || 50;
+    if (newDates.length) event.dates = newDates;
 
-    // Initialize if missing
-    if (!event.seatsPerDate || typeof event.seatsPerDate !== "object") event.seatsPerDate = {};
-    if (!event.bookedSeats || typeof event.bookedSeats !== "object") event.bookedSeats = {};
-
-    // Update seats for each date
-    newDates.forEach(d => {
-      const iso = d.toISOString();
-      const alreadyBooked = (event.bookedSeats[iso] || []).length;
-      event.seatsPerDate[iso] = Math.max(newSeats - alreadyBooked, 0);
-      if (!event.bookedSeats[iso]) {
-        event.bookedSeats[iso] = [];
+    const capacity = capacityFromBody(req.body);
+    if (capacity !== undefined) {
+      if (!Number.isInteger(capacity) || capacity < 1 || capacity > MAX_CAPACITY) {
+        return res.status(400).json({ message: `Seats per show must be between 1 and ${MAX_CAPACITY}.` });
       }
-    });
-
-    // Remove dates that are no longer in the event
-    const newDateStrs = newDates.map(d => d.toISOString());
-    Object.keys(event.seatsPerDate).forEach(dateStr => {
-      if (!newDateStrs.includes(dateStr)) {
-        delete event.seatsPerDate[dateStr];
-        delete event.bookedSeats[dateStr];
+      // Can't shrink the hall below what's already sold on any remaining date.
+      const busiest = event.dates
+        .map(d => ({ d, n: bookedOn(event, d).length }))
+        .sort((a, b) => b.n - a.n)[0];
+      if (busiest && capacity < busiest.n) {
+        return res.status(400).json({
+          message: `${busiest.n} seats are already booked on ${dateKey(busiest.d)}, so seats per show can't go below ${busiest.n}.`,
+        });
       }
-    });
-
-    // Update event fields
-    event.title = title || event.title;
-    event.description = description || event.description;
-    event.dates = newDates.length ? newDates : event.dates;
-    event.location = location || event.location;
-    event.price = price !== undefined ? Number(price) : event.price;
-    event.ticketsAvailable = newSeats;
-
-    if (req.file) {
-      event.image = req.file.filename;
+      event.capacity = capacity;
     }
 
-    event.markModified('seatsPerDate');
-    event.markModified('bookedSeats');
+    event.title = title || event.title;
+    event.description = description || event.description;
+    event.location = location || event.location;
+    event.price = price !== undefined ? Number(price) : event.price;
+    if (req.file) event.image = req.file.filename;
+
     event.markModified('dates');
+    await event.save(); // pre-save re-syncs seatsPerDate / bookedSeats
 
-    await event.save();
-
-    res.json({
-      ...event.toObject(),
-      dates: event.dates.map(d => d.toISOString()),
-      seatsPerDate: event.seatsPerDate || {},
-      bookedSeats: event.bookedSeats || {},
-    });
+    res.json(toResponse(event));
   } catch (err) {
     console.error("Update event error:", err);
     res.status(400).json({ message: err.message });
@@ -789,58 +725,37 @@ export const bookTickets = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const dateObj = new Date(date);
-    const dateStr = dateObj.toISOString().split("T")[0];
-
-    // Initialize if missing
-    const ticketsAvailable = event.ticketsAvailable || 50;
-    if (!event.seatsPerDate || typeof event.seatsPerDate !== "object") event.seatsPerDate = {};
-    if (!event.bookedSeats || typeof event.bookedSeats !== "object") event.bookedSeats = {};
-
-    if (event.seatsPerDate[dateStr] === undefined) {
-      event.seatsPerDate[dateStr] = ticketsAvailable;
-    }
-    if (!event.bookedSeats[dateStr]) {
-      event.bookedSeats[dateStr] = [];
+    const dateStr = dateKey(date);
+    if (!event.dates.some(d => dateKey(d) === dateStr)) {
+      return res.status(400).json({ message: "This event isn't running on that date." });
     }
 
-    // ✅ VALIDATION: Check if seat labels exist (A–O rows, 1–10 per row)
-    const validRows = "ABCDEFGHIJKLMNO".split(""); // A to O (15 rows)
-    const validSeats = [];
-    for (const row of validRows) {
-      for (let i = 1; i <= 10; i++) validSeats.push(`${row}${i}`);
-    }
-
-    const invalidSeats = seats.filter(seat => !validSeats.includes(seat));
+    // Seats must exist in this event's layout (rows A.., up to capacity).
+    const capacity = capacityOf(event);
+    const validSeats = new Set(seatLabels(capacity));
+    const invalidSeats = seats.filter(seat => !validSeats.has(seat));
     if (invalidSeats.length > 0) {
-      return res.status(400).json({
-        errors: [
-          { field: "", message: "Not enough seats available for this date" }
-        ]
-      });
+      return res.status(400).json({ message: `These seats don't exist for this event: ${invalidSeats.join(", ")}` });
     }
 
-    // Validate seat availability count
-    if (event.seatsPerDate[dateStr] < seats.length) {
-      return res.status(400).json({
-        message: `Not enough seats available. Only ${event.seatsPerDate[dateStr]} seats remaining.`,
-      });
-    }
-
-    // Check for duplicate seat bookings
-    const alreadyBooked = seats.filter(seat => event.bookedSeats[dateStr].includes(seat));
+    const taken = bookedOn(event, dateStr);
+    const alreadyBooked = seats.filter(seat => taken.includes(seat));
     if (alreadyBooked.length > 0) {
       return res.status(400).json({
         message: `Seats already booked: ${alreadyBooked.join(", ")}`,
       });
     }
 
-    // Book the seats
-    event.bookedSeats[dateStr].push(...seats);
-    event.seatsPerDate[dateStr] = Math.max(event.seatsPerDate[dateStr] - seats.length, 0);
+    const left = capacity - taken.length;
+    if (left < seats.length) {
+      return res.status(400).json({
+        message: `Not enough seats available. Only ${left} seats remaining.`,
+      });
+    }
 
-    event.ticketsAvailable = Math.max((event.ticketsAvailable || 50) - seats.length, 0);
-
-    event.markModified("seatsPerDate");
+    // Book the seats for this date only; pre-save recomputes seatsPerDate from capacity.
+    if (!event.bookedSeats || typeof event.bookedSeats !== "object") event.bookedSeats = {};
+    event.bookedSeats[dateStr] = [...taken, ...seats];
     event.markModified("bookedSeats");
 
     await event.save();
@@ -873,12 +788,7 @@ export const bookTickets = async (req, res) => {
     res.json({
       message: "Booking successful! Confirmation email sent.",
       booking: booking,
-      event: {
-        ...event.toObject(),
-        dates: event.dates.map(d => d.toISOString()),
-        seatsPerDate: event.seatsPerDate || {},
-        bookedSeats: event.bookedSeats || {},
-      },
+      event: toResponse(event),
     });
   } catch (err) {
     console.error("Booking error:", err);

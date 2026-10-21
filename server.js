@@ -6,11 +6,15 @@ import connectDB from "./config/db.js";
 import userRoutes from "./routes/userRoutes.js";
 import eventRoutes from "./routes/eventRoutes.js";
 import bookingRoutes from "./routes/bookingRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
+import contactRoutes from "./routes/contactRoutes.js";
 import { fileURLToPath } from "url";
 
 connectDB();
 
 const app = express();
+// Behind the host's proxy, use the visitor's real IP (needed for the contact form's rate limit).
+app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json());
 
@@ -25,6 +29,8 @@ app.get("/", (req, res) => res.send("Ticket Booking Backend Running"));
 app.use("/api/users", userRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/bookings", bookingRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/contact", contactRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

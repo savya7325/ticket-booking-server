@@ -1,6 +1,8 @@
 
 import { body } from "express-validator";
 import Event from "../models/events.js";
+import { dateKey } from "../utils/dateKey.js";
+import { MAX_CAPACITY, seatsLeftOn } from "../utils/seatLayout.js";
 
 export const createEventValidators = [
   body("title")
@@ -33,9 +35,16 @@ export const createEventValidators = [
     .notEmpty().withMessage("Price is required").bail()
     .isFloat({ min: 0 }).withMessage("Price must be a positive number"),
 
-  body("ticketsAvailable")
-    .notEmpty().withMessage("Tickets available is required").bail()
-    .isInt({ min: 1 }).withMessage("Tickets must be at least 1"),
+  // Seats per show: `capacity` (new clients) or `ticketsAvailable` (older clients).
+  body().custom((value, { req }) => {
+    const raw = req.body.capacity ?? req.body.ticketsAvailable;
+    if (raw === undefined || raw === "") throw new Error("Seats per show is required");
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > MAX_CAPACITY) {
+      throw new Error(`Seats per show must be between 1 and ${MAX_CAPACITY}`);
+    }
+    return true;
+  }),
 ];
 
 export const createBookingValidators = [
@@ -57,20 +66,13 @@ export const createBookingValidators = [
   const event = await Event.findById(req.params.id);
   if (!event) throw new Error("Event not found");
 
-  // Normalize date to match event
-  const selected = new Date(req.body.date);
-  const selectedKey = event.dates.find(d => {
-    const eventDate = new Date(d);
-    return selected.toDateString() === eventDate.toDateString();
-  });
-
-  if (!selectedKey) {
+  // Match on the "YYYY-MM-DD" key used everywhere for show dates.
+  const key = dateKey(req.body.date);
+  if (!event.dates.some(d => dateKey(d) === key)) {
     throw new Error("Selected date is not available for this event");
   }
 
-  const dateKey = new Date(selectedKey).toISOString();
-
-  if (!event.seatsPerDate[dateKey] || event.seatsPerDate[dateKey] < req.body.seats.length) {
+  if (seatsLeftOn(event, key) < req.body.seats.length) {
     throw new Error("Not enough seats available for this date");
   }
 

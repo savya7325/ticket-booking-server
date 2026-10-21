@@ -223,4 +223,64 @@ export const sendCancellationEmail = async (userEmail, bookingDetails) => {
   }
 };
 
+// ---------- Contact page ----------
+
+// Where contact-form messages are delivered. Set CONTACT_INBOX in .env to change it.
+const contactInbox = () => process.env.CONTACT_INBOX || "savyaak07@gmail.com";
+
+// Visitor-typed text goes into HTML emails, so escape it.
+const esc = (str = "") =>
+  String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// Notifies the admin. Reply-To is the visitor, so hitting "Reply" in Gmail answers them directly.
+export const sendContactNotification = async ({ name, email, topic, message, createdAt }) => {
+  const when = new Date(createdAt || Date.now()).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" });
+  return transporter.sendMail({
+    from: process.env.EMAIL_FROM,
+    to: contactInbox(),
+    replyTo: { name, address: email },
+    subject: `📩 New message: ${topic} — ${name}`,
+    text: `New message from the Evenza contact page\n\nFrom: ${name} <${email}>\nTopic: ${topic}\nSent: ${when} IST\n\n${message}\n\nReply to this email to answer ${name} directly.`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1f1830">
+        <div style="background:linear-gradient(135deg,#7c3aed,#db2777);color:#fff;padding:24px 28px;border-radius:12px 12px 0 0">
+          <div style="font-size:12px;letter-spacing:2px;opacity:.85">EVENZA · CONTACT PAGE</div>
+          <h2 style="margin:6px 0 0;font-size:22px">New message: ${esc(topic)}</h2>
+        </div>
+        <div style="background:#f7f5fb;padding:24px 28px;border-radius:0 0 12px 12px">
+          <table style="width:100%;font-size:14px;border-collapse:collapse">
+            <tr><td style="padding:6px 0;color:#7c6f8f;width:80px">From</td><td style="padding:6px 0"><b>${esc(name)}</b> &lt;<a href="mailto:${esc(email)}" style="color:#7c3aed">${esc(email)}</a>&gt;</td></tr>
+            <tr><td style="padding:6px 0;color:#7c6f8f">Topic</td><td style="padding:6px 0">${esc(topic)}</td></tr>
+            <tr><td style="padding:6px 0;color:#7c6f8f">Sent</td><td style="padding:6px 0">${esc(when)} IST</td></tr>
+          </table>
+          <div style="margin-top:16px;background:#fff;border-radius:10px;padding:18px;font-size:15px;line-height:1.6;white-space:pre-wrap;border:1px solid #ece7f5">${esc(message)}</div>
+          <p style="font-size:13px;color:#7c6f8f;margin-top:18px">Just hit <b>Reply</b> to answer ${esc(name)} directly.</p>
+        </div>
+      </div>`,
+  });
+};
+
+// Lets the visitor know their message arrived.
+export const sendContactAutoReply = async ({ name, email, topic, message }) =>
+  transporter.sendMail({
+    from: process.env.EMAIL_FROM,
+    to: email,
+    replyTo: contactInbox(),
+    subject: "We got your message 🎟️",
+    text: `Hi ${name},\n\nThanks for reaching out to Evenza. We've received your message about "${topic}" and will reply to this address soon.\n\nYour message:\n${message}\n\n— Team Evenza`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1f1830">
+        <div style="background:linear-gradient(135deg,#7c3aed,#db2777);color:#fff;padding:28px;border-radius:12px 12px 0 0;text-align:center">
+          <h2 style="margin:0;font-size:22px">Thanks, ${esc(name)}! 🎟️</h2>
+          <p style="margin:8px 0 0;opacity:.9">We got your message and will get back to you soon.</p>
+        </div>
+        <div style="background:#f7f5fb;padding:24px 28px;border-radius:0 0 12px 12px;font-size:14px;line-height:1.6">
+          <p style="margin-top:0">Here's a copy of what you sent us about <b>${esc(topic)}</b>:</p>
+          <div style="background:#fff;border-radius:10px;padding:16px;white-space:pre-wrap;border:1px solid #ece7f5">${esc(message)}</div>
+          <p>Need to add something? Just reply to this email.</p>
+          <p style="color:#7c6f8f;margin-bottom:0">— Team Evenza</p>
+        </div>
+      </div>`,
+  });
+
 export default transporter;

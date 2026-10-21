@@ -2,6 +2,8 @@
 import express from "express";
 import { protect, adminOnly } from "../middleware/auth.js";
 import Booking from "../models/booking.js";
+import Event from "../models/events.js";
+import { dateKey } from "../utils/dateKey.js";
 
 const router = express.Router();
 
@@ -37,23 +39,14 @@ router.delete("/:id", protect, adminOnly, async (req, res) => {
     // Update the event to remove these seats
     const event = await Event.findById(booking.event);
     if (event) {
-      const dateStr = new Date(booking.date).toISOString();
-      
-      // Remove seats from bookedSeats
-      if (event.bookedSeats && event.bookedSeats[dateStr]) {
-        event.bookedSeats[dateStr] = event.bookedSeats[dateStr].filter(
-          seat => !booking.seats.includes(seat)
-        );
+      // Free the seats for that show date (older data may also have a full-ISO key).
+      for (const k of [dateKey(booking.date), new Date(booking.date).toISOString()]) {
+        if (Array.isArray(event.bookedSeats?.[k])) {
+          event.bookedSeats[k] = event.bookedSeats[k].filter(seat => !booking.seats.includes(seat));
+        }
       }
-      
-      // Restore available seats
-      if (event.seatsPerDate && event.seatsPerDate[dateStr] !== undefined) {
-        event.seatsPerDate[dateStr] += booking.seats.length;
-      }
-      
-      event.markModified('seatsPerDate');
       event.markModified('bookedSeats');
-      await event.save();
+      await event.save(); // pre-save recomputes seats left (capacity − booked) for every date
     }
 
     // Delete the booking

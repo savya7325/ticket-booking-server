@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { dateKey } from "../utils/dateKey.js";
+import { syncSeatMaps, MAX_CAPACITY } from "../utils/seatLayout.js";
 
 const eventSchema = new mongoose.Schema({
   title: { type: String, required: true },
@@ -7,36 +7,21 @@ const eventSchema = new mongoose.Schema({
   dates: { type: [Date], required: true },
   location: { type: String },
   price: { type: Number, default: 0 },
+  // Fixed number of seats per show; the seat map always draws this many.
+  capacity: { type: Number, min: 1, max: MAX_CAPACITY },
+  // Legacy field kept for older clients; mirrors capacity and no longer shrinks on bookings.
   ticketsAvailable: { type: Number, default: 0 },
   image: { type: String },
+  // Per show date ("YYYY-MM-DD"): seats left and the seat labels already taken.
   seatsPerDate: { type: mongoose.Schema.Types.Mixed, default: {} },
   bookedSeats: { type: mongoose.Schema.Types.Mixed, default: {} },
 }, { timestamps: true });
 
-// Pre-save hook to initialize seatsPerDate and bookedSeats
+// Keep both seat maps in step with the dates and capacity on every save.
 eventSchema.pre("save", function(next) {
-  if (!this.seatsPerDate || typeof this.seatsPerDate !== "object") {
-    this.seatsPerDate = {};
-  }
-  if (!this.bookedSeats || typeof this.bookedSeats !== "object") {
-    this.bookedSeats = {};
-  }
-
-  this.dates.forEach(date => {
-    // const iso = new Date(date).toISOString();
-       const iso = dateKey(date);
-    if (!(iso in this.seatsPerDate)) {
-      this.seatsPerDate[iso] = this.ticketsAvailable || 0;
-    }
-    if (!(iso in this.bookedSeats)) {
-      this.bookedSeats[iso] = [];
-    }
-  });
-
-  // Mark as modified so Mongoose saves the changes
-  this.markModified('seatsPerDate');
-  this.markModified('bookedSeats');
-
+  if (!this.capacity) this.capacity = this.ticketsAvailable || 50;
+  this.ticketsAvailable = this.capacity;
+  syncSeatMaps(this);
   next();
 });
 

@@ -1,11 +1,19 @@
 
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
+import { ROLES, normalizeRole } from "../utils/roles.js";
+
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  role: { type: String, enum: ["user", "admin"], default: "user" },
+  // 1 = admin, 2 = user. The custom cast also reads legacy "admin"/"user" strings.
+  role: {
+    type: Number,
+    enum: [ROLES.ADMIN, ROLES.USER],
+    default: ROLES.USER,
+    cast: normalizeRole,
+  },
 
     avatar: {
       type: String,

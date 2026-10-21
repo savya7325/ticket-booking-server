@@ -58,6 +58,7 @@ import fs from "fs";
 import User from "../models/users.js";  
 import jwt from "jsonwebtoken";
 import { sendWelcomeEmail } from "../services/emailService.js"; // ← ADD THIS IMPORT
+import { ROLES, isAdminRole } from "../utils/roles.js";
 
 const generateToken = (id, role) => jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "1d" });
 
@@ -65,9 +66,15 @@ export const registerUser = async (req, res) => {
   const { username, email, password, role, adminSecret } = req.body;
   if (!username || !email || !password)
     return res.status(400).json({ message: "All fields are required" });
-  
-  let assignedRole = "user";
-  if (role === "admin" && adminSecret === process.env.ADMIN_SECRET) assignedRole = "admin";
+
+  // Admin accounts need the server-side secret; without it everyone is a user.
+  let assignedRole = ROLES.USER;
+  if (
+    isAdminRole(role) &&
+    process.env.ADMIN_SECRET &&
+    adminSecret === process.env.ADMIN_SECRET
+  )
+    assignedRole = ROLES.ADMIN;
   
   try {
     const userExists = await User.findOne({ email });
