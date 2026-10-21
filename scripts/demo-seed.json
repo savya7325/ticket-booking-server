@@ -1,0 +1,55 @@
+[
+  {
+    "_id": "6ac9ff33abde54ccc36af120",
+    "title": "Musicooz",
+    "description": "Musicooz is a enthusiastic events",
+    "dates": [
+      "2026-10-11T00:00:00.000Z"
+    ],
+    "location": "Calicut",
+    "price": 125,
+    "capacity": 200,
+    "ticketsAvailable": 200,
+    "image": "1791622963738.jpg"
+  },
+  {
+    "_id": "6acc80a1abde54ccc36af1b6",
+    "title": "Corporate Event",
+    "description": "Visualize the venue and evolve",
+    "dates": [
+      "2026-10-17T00:00:00.000Z"
+    ],
+    "location": "Govt Cyber Park Calicut",
+    "price": 250,
+    "capacity": 100,
+    "ticketsAvailable": 100,
+    "image": "1791787169516.jpg"
+  },
+  {
+    "_id": "6acc8897abde54ccc36af23a",
+    "title": "TECH CONF",
+    "description": "AI, automation, virtual worlds, next-gen device everyone’s chasing the next big thing. But here’s the truth: innovation isn’t just about speed, it’s about direction.",
+    "dates": [
+      "2026-10-15T00:00:00.000Z"
+    ],
+    "location": "Calicut, HiLite Mall",
+    "price": 100,
+    "capacity": 150,
+    "ticketsAvailable": 150,
+    "image": "1791789207791.jpg"
+  },
+  {
+    "_id": "6acdba5ce3ec03939031ec81",
+    "title": "Night Glance",
+    "description": "Glance the night and enjoy the show",
+    "dates": [
+      "2026-10-14T00:00:00.000Z",
+      "2026-10-15T00:00:00.000Z"
+    ],
+    "location": "Calicut, HiLite Mall",
+    "price": 100,
+    "capacity": 125,
+    "ticketsAvailable": 125,
+    "image": "1791867484432.jpg"
+  }
+]
